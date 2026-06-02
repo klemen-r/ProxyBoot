@@ -34,8 +34,7 @@
 #define __has_include(x) 0
 #endif
 
-// The BLE library files may exist even on chips with no Bluetooth radio.
-// Match the guards used inside Espressif's BLE headers.
+// S2 has no BLE. Keep BLE code out on boards without a BLE stack.
 #if __has_include(<BLEDevice.h>) && \
     (defined(SOC_BLE_SUPPORTED) || defined(CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE)) && \
     (defined(CONFIG_BLUEDROID_ENABLED) || defined(CONFIG_NIMBLE_ENABLED))
@@ -55,8 +54,7 @@
 #endif
 
 #if (defined(CONFIG_IDF_TARGET_ESP32S2) || defined(CONFIG_IDF_TARGET_ESP32S3)) && \
-    defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 0 && \
-    __has_include(<USB.h>) && __has_include(<USBHIDKeyboard.h>)
+    defined(ARDUINO_USB_MODE) && ARDUINO_USB_MODE == 0
 #include <USB.h>
 #include <USBHIDKeyboard.h>
 USBHIDKeyboard Keyboard;
@@ -80,7 +78,7 @@ const bool ENABLE_BLE_DETECTION = true;
 const char *TRUSTED_BLE_NAME = "";          // Example: "John's iPhone"
 const bool BLE_NAME_CONTAINS = true;        // true = substring match, false = exact
 const char *TRUSTED_BLE_ADDRESS = "";       // Example: "aa:bb:cc:dd:ee:ff"
-const char *TRUSTED_SERVICE_UUID = "";      // Example: "12345678-1234-1234-1234-123456789abc"
+const char *TRUSTED_SERVICE_UUID = "c5e6bcaa-108a-47e9-a50b-d9d02827d345";
 
 // Wi-Fi IP detection.
 const char *TRUSTED_WIFI_IP = "";           // Example: "192.168.1.50"

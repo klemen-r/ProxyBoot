@@ -28,6 +28,8 @@ Some BIOSes only honor USB power-on from sleep (S3/S4), not full shutdown (S5). 
 ## Files
 
 - `ProxyBoot.ino`: Arduino IDE sketch.
+- `android/ProxyBeacon`: small Android app that advertises the trusted BLE
+  service UUID.
 
 ## Arduino IDE Setup
 
@@ -66,6 +68,37 @@ Important fields:
 BLE name and address matching is trivially spoofable. Anyone within ~10 m advertising the configured name or address can power your PC on.
 
 The strongest option is to advertise a **private random service UUID** from an app you control, and match against that.
+
+## Android ProxyBeacon App
+
+The easiest fix for Android BLE privacy rotation is not to match the phone's
+BLE address. ProxyBeacon advertises a stable private service UUID, and
+ProxyBoot matches that UUID:
+
+```cpp
+const char *TRUSTED_SERVICE_UUID = "c5e6bcaa-108a-47e9-a50b-d9d02827d345";
+```
+
+Build the APK:
+
+```sh
+cd android/ProxyBeacon
+./build-apk.sh
+```
+
+Install it on a USB-connected phone with Developer options and USB debugging
+enabled:
+
+```sh
+./install-apk.sh
+```
+
+Then open ProxyBeacon, grant Nearby Devices, and tap **Start**. The app runs a
+foreground BLE advertiser and shows the active UUID, advertising support,
+starts, failures, last start time, and uptime.
+
+If you tap **Random** in the app, also tap **Copy ESP value** and paste that
+line into `ProxyBoot.ino`, then flash the ESP again.
 
 ## How The Wake Logic Works
 
