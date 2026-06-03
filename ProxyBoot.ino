@@ -1,29 +1,3 @@
-/*
-  ProxyBoot
-
-  Turns on a fully shut-down PC when a trusted phone is nearby.
-  USB HID only. No relay.
-
-  Hardware/BIOS requirements:
-  - ESP32-S3 (full support) or ESP32-S2 (USB-only, no BLE: ESP32-S2 has no
-    Bluetooth radio, so the sketch disables BLE on that chip).
-  - Arduino board menu: Tools -> USB Mode -> "USB-OTG (TinyUSB)".
-  - Motherboard keeps USB powered while the PC is off (5V standby USB).
-  - BIOS/UEFI allows power-on by USB keyboard / USB device.
-    Disable ErP. Enable "Power on by USB keyboard" or "Wake on USB".
-
-  iPhone note:
-  - iPhones randomize BLE identifiers. Address matching is often unreliable.
-  - Service UUID matching is better when a known app advertises one.
-  - Wi-Fi detection by IP is also unreliable because phones sleep their radio.
-
-  Spoofing warning:
-  - BLE name and address matching is trivially spoofable in range.
-  - Use a private random service UUID known only to you for higher trust.
-
-  Targets Arduino-ESP32 core 3.x (current).
-*/
-
 #include <Arduino.h>
 #include <WiFi.h>
 #include <ctype.h>
@@ -34,7 +8,6 @@
 #define __has_include(x) 0
 #endif
 
-// S2 has no BLE. Keep BLE code out on boards without a BLE stack.
 #if __has_include(<BLEDevice.h>) && \
     (defined(SOC_BLE_SUPPORTED) || defined(CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE)) && \
     (defined(CONFIG_BLUEDROID_ENABLED) || defined(CONFIG_NIMBLE_ENABLED))
@@ -47,7 +20,6 @@
 #define PROXYBOOT_HAS_BLE 0
 #endif
 
-// Optional. Install ESP32Ping in Arduino IDE and set this to 1 to use ICMP ping.
 #define USE_ESP32_PING_LIBRARY 0
 #if USE_ESP32_PING_LIBRARY
 #include <ESP32Ping.h>
@@ -62,43 +34,30 @@ USBHIDKeyboard Keyboard;
 #error "ProxyBoot needs ESP32-S2 or ESP32-S3 with Tools -> USB Mode = 'USB-OTG (TinyUSB)'. Pick the right board/USB mode in the Arduino IDE."
 #endif
 
-// =========================
-// User configuration
-// =========================
-
-// Wi-Fi is only needed for IP presence detection.
 const bool ENABLE_WIFI_DETECTION = false;
 const char *WIFI_SSID = "CHANGE_ME";
 const char *WIFI_PASSWORD = "CHANGE_ME";
 
-// BLE detection. Disabled at compile time on boards with no BLE radio.
 const bool ENABLE_BLE_DETECTION = true;
 
-// Leave unused fields empty. Matching uses any configured BLE identity.
-const char *TRUSTED_BLE_NAME = "";          // Example: "John's iPhone"
-const bool BLE_NAME_CONTAINS = true;        // true = substring match, false = exact
-const char *TRUSTED_BLE_ADDRESS = "";       // Example: "aa:bb:cc:dd:ee:ff"
+const char *TRUSTED_BLE_NAME = "";
+const bool BLE_NAME_CONTAINS = true;
+const char *TRUSTED_BLE_ADDRESS = "";
 const char *TRUSTED_SERVICE_UUID = "c5e6bcaa-108a-47e9-a50b-d9d02827d345";
 
-// Wi-Fi IP detection.
-const char *TRUSTED_WIFI_IP = "";           // Example: "192.168.1.50"
-const char *TRUSTED_WIFI_MAC = "";          // Informational only, not used.
-const uint16_t WIFI_TCP_PROBE_PORT = 62078; // iOS lockdown port if reachable
-const uint32_t WIFI_TCP_TIMEOUT_MS = 1200;  // Bounds connect() itself, in ms.
+const char *TRUSTED_WIFI_IP = "";
+const char *TRUSTED_WIFI_MAC = "";
+const uint16_t WIFI_TCP_PROBE_PORT = 62078;
+const uint32_t WIFI_TCP_TIMEOUT_MS = 1200;
 const uint32_t WIFI_RECONNECT_BACKOFF_MS = 60UL * 1000UL;
 
-// Proximity and scan behavior.
 const int BLE_RSSI_THRESHOLD_DBM = -75;
 const uint8_t REQUIRED_CONSECUTIVE_DETECTIONS = 3;
-const uint8_t REQUIRED_CONSECUTIVE_ABSENCES = 3;   // Re-arm only after phone leaves
+const uint8_t REQUIRED_CONSECUTIVE_ABSENCES = 3;
 const uint32_t SCAN_INTERVAL_MS = 5000;
 const uint32_t BLE_SCAN_SECONDS = 3;
 const uint32_t WAKE_COOLDOWN_MS = 10UL * 60UL * 1000UL;
-const uint32_t STARTUP_GRACE_MS = 10000;           // Wait for USB events to settle
-
-// =========================
-// Runtime state
-// =========================
+const uint32_t STARTUP_GRACE_MS = 10000;
 
 #if PROXYBOOT_HAS_BLE
 BLEScan *bleScan = nullptr;
@@ -120,8 +79,6 @@ enum ArmState {
 };
 ArmState armState = ARMED;
 
-// Set true once the USB host has mounted us (PC is on).
-// Keep this true during USB suspend so we do not type into a running PC.
 volatile bool usbHostMounted = false;
 volatile bool usbBusSuspended = false;
 
@@ -231,8 +188,6 @@ void setupUsbHid() {
 }
 
 void connectWiFi() {
-  // Always update the timestamp on exit so the reconnect backoff applies to
-  // every code path, including the "misconfigured" early returns.
   if (!ENABLE_WIFI_DETECTION) {
     Serial.println("Wi-Fi detection disabled");
     lastWifiReconnectAttemptMs = millis();
@@ -392,7 +347,7 @@ bool scanBleForTrustedPhone() {
   bleScan->clearResults();
   return trustedDetected;
 }
-#else  // !PROXYBOOT_HAS_BLE
+#else
 void setupBle() {
   if (ENABLE_BLE_DETECTION) {
     Serial.println("BLE detection requested but this board has no Bluetooth radio. Skipping.");
@@ -454,9 +409,6 @@ bool probeTrustedPhoneByIp() {
   Serial.print(":");
   Serial.println(WIFI_TCP_PROBE_PORT);
 
-  // Use the 3-arg connect overload so the timeout actually bounds connect()
-  // itself. NetworkClient::setTimeout() in core 3.x takes seconds and only
-  // affects subsequent reads, not connect().
   WiFiClient client;
   const bool connected = client.connect(ip, WIFI_TCP_PROBE_PORT, WIFI_TCP_TIMEOUT_MS);
   if (connected) {
@@ -600,8 +552,6 @@ void loop() {
   Serial.println(wifiDetected ? "yes" : "no");
 
   if (detected) {
-    // Hold the counter at 0 during boot grace so the first post-grace wake
-    // does not fire instantly into a host that is mid-enumeration.
     if (bootGraceActive()) {
       Serial.println("Boot grace active, holding detection counter at 0");
       consecutiveDetections = 0;
